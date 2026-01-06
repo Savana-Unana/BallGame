@@ -13,7 +13,7 @@ let gameFreeze = 0;
 
 // Images
 const images = {};
-for (let n of ["sword","dagger","axe","shovel","bow"]) {
+for (let n of ["Sword","Dagger","Axe","Shovel","Bow"]) {
     let i = new Image(); i.src = `assets/${n}.png`; images[n] = i;
 }
 const arrowImg = new Image();
