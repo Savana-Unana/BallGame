@@ -241,23 +241,14 @@ function loop(){
     requestAnimationFrame(loop);
 }
 
-// Fetch Balls
-fetch("balls.json").then(r=>r.json()).then(d=>{
-  //make("Pacifist", d.Pacifist, 350, 250);
-  make("Sword", d.Sword, 150, 250);
-  //make("Speed", d.Speed, 350, 250);
-  //make("Dagger", d.Dagger, 150, 250);
-  make("Bow", d.Bow, 350, 250);
-  //make("Shovel", d.Shovel, 350, 250);
-  //make("Duplicator", d.Duplicator, 350, 250); 
-  //make("RPG", d.RPG, 350, 250);
-  //make("Glass", d.Glass, 350, 250);
-  //make("Thief", d.Thief, 350, 250);
-  //make("Math", d.Math, 350, 250);
-  //make("Heavy", d.Heavy, 350, 250);
-  //make("Portal", d.Portal, 350, 250);
-  //make("Lasso", d.Lasso, 350, 250);
-  //make("Grapple", d.Grapple, 350, 250);
-  //make("Baby", d.Baby, 350, 250);
-  loop()
-});
+fetch("balls.json")
+  .then(r => r.json())
+  .then(d => {
+    const bewls = Object.keys(d);
+    const shuffled = bewls.sort(() => Math.random() - 0.5);
+    const first = shuffled[0];
+    const second = shuffled[1];
+    make(first, d[first], 150, 250);
+    make(second, d[second], 350, 250);
+    loop();
+  });
