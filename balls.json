@@ -1,0 +1,172 @@
+{
+  "Pacifist": {
+    "HP": 60,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "cyan",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": null,
+    "Ability": null
+  },
+  "Speedy": {
+    "HP": 40,
+    "Size": 35,
+    "HPColor": "yellow",
+    "Color": "red",
+    "Speed": 3,
+    "Weight": 0.8,
+    "Weapon": null,
+    "Ability": "Speed"
+  },
+  "Sword": {
+    "HP": 60,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "red",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "Sword",
+    "Ability": null
+  },
+  "Dagger": {
+    "HP": 25,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "green",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "Dagger",
+    "Ability": null
+  },
+  "Bow": {
+    "HP": 60,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "orange",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "Bow",
+    "Ability": null
+  },
+  "Shovel": {
+    "HP": 65,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "brown",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "Shovel",
+    "Ability": null
+  },
+  "Duplicator": {
+    "HP": 55,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "orange",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": null,
+    "Ability": "Duplicate"
+  },
+  "Axe": {
+    "HP": 65,
+    "Size": 40,
+    "HPColor": "white",
+    "Color": "purple",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "Axe",
+    "Ability": null
+  },
+  "RPG": {
+    "HP": 55,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "crimson",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "RPG",
+    "Ability": null
+  },
+  "Glass": {
+    "HP": 30,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "lightgray",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": null,
+    "Ability": "Glass"
+  },
+  "Thief": {
+    "HP": 50,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "magenta",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": null,
+    "Ability": "Yoink"
+  },
+  "Math": {
+    "HP": 60,
+    "Size": 40,
+    "HPColor": "black",
+    "Color": "lime",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "Ruler",
+    "Ability": null
+  },
+  "Baby": {
+    "HP": 30,
+    "Size": 25,
+    "HPColor": "black",
+    "Color": "lightblue",
+    "Speed": 5,
+    "Weight": 0.6,
+    "Weapon": null,
+    "Ability": null
+  },
+  "Heavy": {
+    "HP": 90,
+    "Size": 55,
+    "HPColor": "black",
+    "Color": "gray",
+    "Speed": 1,
+    "Weight": 100,
+    "Weapon": null,
+    "Ability": null
+  },
+  "Portal": {
+    "HP": 55,
+    "Size": 40,
+    "HPColor": "lightorange",
+    "Color": "darkblue",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": "PortalGun",
+    "Ability": null
+  },
+  "Lasso": {
+    "HP": 60,
+    "Size": 40,
+    "HPColor": "white",
+    "Color": "darkbrown",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": null,
+    "Ability": "Lasso"
+  },
+  "Grapple": {
+    "HP": 60,
+    "Size": 40,
+    "HPColor": "white",
+    "Color": "black",
+    "Speed": 2,
+    "Weight": 1,
+    "Weapon": null,
+    "Ability": "Grapple"
+  }
+}
