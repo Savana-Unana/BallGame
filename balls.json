@@ -207,7 +207,8 @@
     "HPColor": "black",
     "Ability": null,
     "Weapon": "Ruler",
-    "Effect": "Teleports towards opponents. +1 TP reload-speed each hit."
+    "Effect": "Teleports towards opponents. +1 TP reload-speed each hit.",
+    "EngineWeapon": "Ruler"
   },
   "Grapple": {
     "HP": 100,
@@ -242,7 +243,8 @@
     "HPColor": "black",
     "Ability": "Parry",
     "Weapon": null,
-    "Effect": "Glows and then reflects anything that hits it (damage-wise). Parry-length increases by +1 each parry."
+    "Effect": "Glows and then reflects anything that hits it (damage-wise). Parry-length increases by +1 each parry.",
+    "EngineAbility": "Parry"
   },
   "Super Parry": {
     "HP": 110,
@@ -253,7 +255,8 @@
     "HPColor": "black",
     "Ability": "Stunlock",
     "Weapon": null,
-    "Effect": "Glows and then reflects anything that hits it (damage-wise), along with a stun and disarm for the same exact time. Parry-length increases by +1 each parry."
+    "Effect": "Glows and then reflects anything that hits it (damage-wise), along with a stun and disarm for the same exact time. Parry-length increases by +1 each parry.",
+    "EngineAbility": "Stunlock"
   },
   "Yoink": {
     "HP": 100,
@@ -312,7 +315,8 @@
     "HPColor": "black",
     "Ability": "Mother",
     "Weapon": null,
-    "Effect": "Spawns 2 children that have 30 HP and are the same size as the Babys."
+    "Effect": "Spawns 2 children that have 30 HP and are the same size as the Babys.",
+    "EngineAbility": "Mother"
   },
   "Super Mother": {
     "HP": 100,
@@ -323,7 +327,8 @@
     "HPColor": "black",
     "Ability": "Daycare",
     "Weapon": null,
-    "Effect": "Spawns 2 children that have 30 HP and are the same size as the Babys. Every single time it touches a child, they both heal 1 HP."
+    "Effect": "Spawns 2 children that have 30 HP and are the same size as the Babys. Every single time it touches a child, they both heal 1 HP.",
+    "EngineAbility": "Daycare"
   },
   "Vampire": {
     "HP": 100,
@@ -358,7 +363,8 @@
     "HPColor": "black",
     "Ability": null,
     "Weapon": "Needle",
-    "Effect": "+2 DMG each hit. Damage is spread 1 at a time every 1/2 second."
+    "Effect": "First hit causes 1 DMG every 10 seconds. Each later hit lowers that timer by 0.5 seconds.",
+    "EngineWeapon": "Needle"
   },
   "Portal": {
     "HP": 100,

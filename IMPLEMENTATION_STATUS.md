@@ -12,10 +12,16 @@
 - Baby
 - Super Baby
 - Lasso
+- Ruler
+- Parry
+- Super Parry
 - Yoink
 - Vampire
 - Consume
 - Glass
+- Mother
+- Super Mother
+- Needle
 - RPG
 - Super RPG
 - Fortress
@@ -35,12 +41,6 @@
 - Phase
 
 ## Not Started
-- Ruler
-- Parry
-- Super Parry
-- Mother
-- Super Mother
-- Needle
 - Mace
 - Super Mace
 - Stonks
