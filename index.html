@@ -5,6 +5,30 @@
 </head>
 <body>
 <div id="ui">
+  <div id="menu">
+    <div class="panel" id="leftPanel">
+      <h2>Left Ball</h2>
+      <div class="ballPreview" id="leftPreview"></div>
+      <div class="detailName" id="leftDetailName">Choose a ball</div>
+      <div class="detailGrid" id="leftDetails"></div>
+      <label class="pickerLabel" for="leftSelect">Select</label>
+      <select id="leftSelect"></select>
+    </div>
+    <div id="menuCenter">
+      <h1>Ball Game</h1>
+      <p>Pick two balls to fight.</p>
+      <button id="randomButton" type="button">Random Battle</button>
+      <button id="startButton" disabled>Start Fight</button>
+    </div>
+    <div class="panel" id="rightPanel">
+      <h2>Right Ball</h2>
+      <div class="ballPreview" id="rightPreview"></div>
+      <div class="detailName" id="rightDetailName">Choose a ball</div>
+      <div class="detailGrid" id="rightDetails"></div>
+      <label class="pickerLabel" for="rightSelect">Select</label>
+      <select id="rightSelect"></select>
+    </div>
+  </div>
   <div id="top">
     <span id="leftName"></span>
     <span>VS</span>
@@ -12,10 +36,11 @@
   </div>
   <canvas id="c"></canvas>
   <div id="bottom">
-    <span id="leftStats"></span>
-    <span id="rightStats"></span>
+    <div id="leftStats"></div>
+    <button id="restartButton" type="button">Restart Battle</button>
+    <div id="rightStats"></div>
   </div>
 </div>
-<script type="module" src="js/sim.js"></script>
+<script type="module" src="js/game.js"></script>
 </body>
 </html>
