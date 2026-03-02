@@ -171,7 +171,8 @@
     "HPColor": "white",
     "Ability": null,
     "Weapon": "RPG",
-    "Effect": "Shoots a rocket that explodes upon contact with the wall or opponent. +1 explosion size each shot."
+    "Effect": "Shoots a rocket that explodes upon contact with the wall or opponent. +1 explosion size each shot.",
+    "EngineWeapon": "RPG"
   },
   "Super RPG": {
     "HP": 110,
@@ -182,7 +183,8 @@
     "HPColor": "white",
     "Ability": null,
     "Weapon": "Demo",
-    "Effect": "Shoots a rocket that explodes upon contact with the wall or opponent and a grenade that deals 3dmg and has the same explosion size as the rocket. +1 explosion size each shot."
+    "Effect": "Shoots a rocket that explodes upon contact with the wall or opponent and a grenade that deals 3dmg and has the same explosion size as the rocket. +1 explosion size each shot.",
+    "EngineWeapon": "Demo"
   },
   "Lasso": {
     "HP": 100,
@@ -298,7 +300,8 @@
     "HPColor": "white",
     "Ability": null,
     "Weapon": "Shield",
-    "Effect": "+1 Shield each hit."
+    "Effect": "+1 Shield each hit.",
+    "EngineAbility": "Fortress"
   },
   "Mother": {
     "HP": 80,
@@ -468,7 +471,8 @@
     "HPColor": "black",
     "Ability": "Phase",
     "Weapon": null,
-    "Effect": "Turns slightly transparent and ignores any interactions. Phase-length increases by +1 each parry."
+    "Effect": "Turns slightly transparent and ignores any interactions. Phase-length increases by +1 each parry.",
+    "EngineAbility": "Phase"
   },
   "Staff": {
     "HP": 100,
@@ -479,7 +483,8 @@
     "HPColor": "black",
     "Ability": null,
     "Weapon": "Staff",
-    "Effect": "Heals +1 HP each time it hits."
+    "Effect": "Heals +1 HP each time it hits.",
+    "EngineWeapon": "Staff"
   },
   "Reaper": {
     "HP": 80,

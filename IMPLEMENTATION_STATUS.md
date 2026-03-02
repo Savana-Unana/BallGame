@@ -16,6 +16,10 @@
 - Vampire
 - Consume
 - Glass
+- RPG
+- Super RPG
+- Fortress
+- Staff
 
 ## In Progress
 - Super Axe
@@ -28,14 +32,12 @@
 - Portal
 - Speed
 - Super Speed
+- Phase
 
 ## Not Started
-- RPG
-- Super RPG
 - Ruler
 - Parry
 - Super Parry
-- Fortress
 - Mother
 - Super Mother
 - Needle
@@ -45,8 +47,6 @@
 - Time
 - Omega
 - Mjolnir
-- Phase
-- Staff
 - Reaper
 
 ## Notes

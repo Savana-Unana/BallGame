@@ -18,6 +18,8 @@ const ui = {
   rightDetails: document.getElementById("rightDetails"),
   randomButton: document.getElementById("randomButton"),
   startButton: document.getElementById("startButton"),
+  slowButton: document.getElementById("slowButton"),
+  fastButton: document.getElementById("fastButton"),
   leftName: document.getElementById("leftName"),
   rightName: document.getElementById("rightName"),
   leftStats: document.getElementById("leftStats"),
@@ -39,6 +41,7 @@ let freezeFrames = 0;
 let roster = null;
 let selections = { left: "", right: "" };
 let selectableBalls = new Set();
+let battleSpeed = 1;
 const defaultPalette = [
   "cyan",
   "red",
@@ -80,7 +83,7 @@ const weaponFactories = {
       angle: 0,
       rotationSpeed: 0.1,
       onHit(target) {
-        target.hp -= this.damage;
+        applyDamage(this.owner, target, this.damage);
         this.damage += 1;
       },
     };
@@ -102,7 +105,7 @@ const weaponFactories = {
       angle: 0,
       rotationSpeed: 0.02,
       onHit(target) {
-        target.hp -= 1;
+        applyDamage(this.owner, target, 1);
         this.speedScale += 0.1;
       },
     };
@@ -119,7 +122,7 @@ const weaponFactories = {
       onHit(target) {
         const damage =
           Math.random() < this.critChance ? this.critDamage : this.baseDamage;
-        target.hp -= damage;
+        applyDamage(this.owner, target, damage);
         this.critDamage += 2;
         this.critChance += 0.01;
       },
@@ -135,6 +138,40 @@ const weaponFactories = {
       onHit(target) {
         applyShovelEffect(this.owner, target);
         this.digLeft = Math.max(0, this.digLeft - 100 / 12);
+      },
+    };
+  },
+  RPG() {
+    return {
+      name: "RPG",
+      angle: 0,
+      rotationSpeed: 0.1,
+      cooldown: 0,
+      fireRate: 90,
+      explosionRadius: 34,
+    };
+  },
+  Demo() {
+    return {
+      name: "Demo",
+      angle: 0,
+      rotationSpeed: 0.1,
+      cooldown: 0,
+      grenadeCooldown: 0,
+      fireRate: 90,
+      grenadeRate: 75,
+      explosionRadius: 34,
+    };
+  },
+  Staff() {
+    return {
+      name: "Staff",
+      hitRadius: 16,
+      angle: 0,
+      rotationSpeed: 0.09,
+      onHit(target) {
+        applyDamage(this.owner, target, 1);
+        this.owner.pendingHeal = (this.owner.pendingHeal ?? 0) + 1;
       },
     };
   },
@@ -183,6 +220,10 @@ const abilityFactories = {
       stolenThing: null,
       originalWeapon: null,
       originalWeaponLabel: null,
+      disabledTarget: null,
+      disabledWeapon: null,
+      disabledAbility: null,
+      disabledAbilityName: null,
       init(owner) {
         this.owner = owner;
         this.originalWeapon = owner.weapon ? { ...owner.weapon } : null;
@@ -196,11 +237,7 @@ const abilityFactories = {
         if (this.activeTimer > 0) {
           this.activeTimer -= 1;
           if (this.activeTimer === 0) {
-            this.owner.weapon = this.originalWeapon ? { ...this.originalWeapon } : null;
-            if (this.owner.weapon) {
-              this.owner.weapon.owner = this.owner;
-            }
-            this.stolenThing = null;
+            this.restoreYoinkState();
           }
         }
       },
@@ -209,18 +246,58 @@ const abilityFactories = {
           return;
         }
 
-        if (target.weapon) {
-          this.owner.weapon = { ...target.weapon };
-          this.owner.weapon.owner = this.owner;
-          this.stolenThing = target.base.Weapon ?? target.weapon.name;
+        if (this.activeTimer > 0) {
+          this.restoreYoinkState();
+        }
+
+        const stolenWeapon = target.weapon ? { ...target.weapon } : null;
+        if (stolenWeapon) {
+          stolenWeapon.owner = this.owner;
+        }
+
+        if (stolenWeapon) {
+          this.owner.weapon = stolenWeapon;
+          this.stolenThing = target.base.Weapon ?? target.weapon?.name ?? "Weapon";
         } else if (target.base.Ability) {
           this.stolenThing = target.base.Ability;
         } else {
           this.stolenThing = "None";
         }
+        applyDamage(this.owner, target, 1);
+        this.disabledTarget = target;
+        this.disabledWeapon = target.weapon;
+        this.disabledAbility = target.ability;
+        this.disabledAbilityName = target.abilityName;
+        target.weapon = null;
+        target.ability = null;
+        target.abilityName = null;
+        target.isDisarmed = true;
         this.activeTimer = 240;
         this.timer = 180;
         playSound(sounds.yoink);
+      },
+      restoreYoinkState() {
+        this.owner.weapon = this.originalWeapon ? { ...this.originalWeapon } : null;
+        if (this.owner.weapon) {
+          this.owner.weapon.owner = this.owner;
+        }
+
+        if (this.disabledTarget) {
+          this.disabledTarget.weapon = this.disabledWeapon;
+          if (this.disabledTarget.weapon) {
+            this.disabledTarget.weapon.owner = this.disabledTarget;
+          }
+          this.disabledTarget.ability = this.disabledAbility;
+          this.disabledTarget.abilityName = this.disabledAbilityName;
+          this.disabledTarget.isDisarmed = false;
+        }
+
+        this.disabledTarget = null;
+        this.disabledWeapon = null;
+        this.disabledAbility = null;
+        this.disabledAbilityName = null;
+        this.stolenThing = null;
+        this.activeTimer = 0;
       },
     };
   },
@@ -401,7 +478,23 @@ const abilityFactories = {
         this.owner = owner;
       },
       onDamaged() {
-        spawnShards(this.owner.x, this.owner.y, 6, this.owner);
+        for (let index = hazards.length - 1; index >= 0; index -= 1) {
+          if (hazards[index].type === "shard" && hazards[index].owner === this.owner) {
+            hazards.splice(index, 1);
+          }
+        }
+        spawnShards(this.owner.x, this.owner.y, 1, this.owner, 180);
+      },
+    };
+  },
+  Fortress() {
+    return {
+      owner: null,
+      init(owner) {
+        this.owner = owner;
+      },
+      onHit() {
+        this.owner.shield += 1;
       },
     };
   },
@@ -436,6 +529,34 @@ const abilityFactories = {
       },
     };
   },
+  Phase() {
+    return {
+      owner: null,
+      cooldown: 180,
+      activeTimer: 0,
+      phaseLength: 90,
+      init(owner) {
+        this.owner = owner;
+      },
+      tick() {
+        if (this.activeTimer > 0) {
+          this.activeTimer -= 1;
+          this.owner.isPhasing = true;
+          if (this.activeTimer === 0) {
+            this.owner.isPhasing = false;
+            this.cooldown = 180;
+          }
+          return;
+        }
+
+        this.owner.isPhasing = false;
+        this.cooldown -= 1;
+        if (this.cooldown <= 0) {
+          this.activeTimer = this.phaseLength;
+        }
+      },
+    };
+  },
   Math() {
     return {
       owner: null,
@@ -459,7 +580,26 @@ function playSound(sound) {
   sound.play().catch(() => {});
 }
 
-function spawnShards(x, y, count, owner) {
+function applyDamage(source, target, amount) {
+  if (!target || amount <= 0) {
+    return 0;
+  }
+
+  let remaining = amount;
+  if (target.shield > 0) {
+    const absorbed = Math.min(target.shield, remaining);
+    target.shield -= absorbed;
+    remaining -= absorbed;
+  }
+
+  if (remaining > 0) {
+    target.hp -= remaining;
+  }
+
+  return remaining;
+}
+
+function spawnShards(x, y, count, owner, ttl = 600) {
   for (let index = 0; index < count; index += 1) {
     const angle = (Math.PI * 2 * index) / count;
     hazards.push({
@@ -467,7 +607,7 @@ function spawnShards(x, y, count, owner) {
       x: x + Math.cos(angle) * 28,
       y: y + Math.sin(angle) * 28,
       radius: 8,
-      ttl: 600,
+      ttl,
       damage: 1,
       owner,
     });
@@ -485,6 +625,31 @@ function spawnHealCube(x, y, amount) {
   });
 }
 
+function spawnExplosion(x, y, radius, damage, owner, color = "#ff9c2f") {
+  hazards.push({
+    type: "explosion",
+    x,
+    y,
+    radius,
+    ttl: 14,
+    color,
+  });
+
+  for (const fighter of fighters) {
+    if (fighter === owner) {
+      continue;
+    }
+    if (fighter.isPhasing) {
+      continue;
+    }
+    if (Math.hypot(fighter.x - x, fighter.y - y) <= fighter.size + radius) {
+      applyDamage(owner, fighter, damage);
+      fighter.ability?.onDamaged?.(owner);
+      owner?.ability?.onHit?.(fighter);
+    }
+  }
+}
+
 function getWeaponPoint(fighter) {
   const weapon = fighter.weapon;
   if (!weapon) {
@@ -496,6 +661,20 @@ function getWeaponPoint(fighter) {
     x: fighter.x + reach * Math.cos(weapon.angle),
     y: fighter.y + reach * Math.sin(weapon.angle),
   };
+}
+
+function pointToSegmentDistance(px, py, ax, ay, bx, by) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abLengthSq = abx * abx + aby * aby;
+  if (abLengthSq === 0) {
+    return Math.hypot(px - ax, py - ay);
+  }
+
+  const t = clamp(((px - ax) * abx + (py - ay) * aby) / abLengthSq, 0, 1);
+  const closestX = ax + abx * t;
+  const closestY = ay + aby * t;
+  return Math.hypot(px - closestX, py - closestY);
 }
 
 function formatValue(value) {
@@ -636,6 +815,8 @@ function setupMenu(data, statusMarkdown) {
   ui.randomButton.addEventListener("click", randomizeBattle);
   ui.startButton.addEventListener("click", startMatch);
   ui.restartButton.addEventListener("click", restartBattle);
+  ui.slowButton.addEventListener("click", slowBattle);
+  ui.fastButton.addEventListener("click", speedBattle);
   updatePreview("left", "");
   updatePreview("right", "");
   refreshStartButton();
@@ -655,12 +836,15 @@ function createFighter(name, base, x, y, isDuplicate = false) {
     maxHp: base.HP,
     size: base.Size,
     maxSize: base.Size,
+    shield: 0,
+    isPhasing: false,
     rotation: 0,
     spinSpeed: Math.random() * 0.2 + 0.1,
     weapon: engineWeapon ? weaponFactories[engineWeapon]?.() ?? null : null,
     ability: null,
     abilityName: engineAbility,
     isDuplicate,
+    pendingHeal: 0,
     hitCooldowns: new Map(),
   };
 
@@ -703,6 +887,14 @@ function restartBattle() {
   startMatch();
 }
 
+function slowBattle() {
+  battleSpeed = Math.max(0.25, battleSpeed - 0.25);
+}
+
+function speedBattle() {
+  battleSpeed = Math.min(3, battleSpeed + 0.25);
+}
+
 function randomizeBattle() {
   const names = [...selectableBalls];
   if (names.length < 2) {
@@ -742,6 +934,9 @@ function spawnDuplicate(owner) {
   duplicate.maxHp = owner.maxHp;
   duplicate.size = owner.size;
   duplicate.maxSize = owner.maxSize;
+  duplicate.shield = owner.shield;
+  duplicate.isPhasing = owner.isPhasing;
+  duplicate.pendingHeal = owner.pendingHeal;
 }
 
 function resolveHit(a, b) {
@@ -776,11 +971,11 @@ function resolveHit(a, b) {
   const aBodyDamage = getBodyDamage(a, b);
   const bBodyDamage = getBodyDamage(b, a);
 
-  if (!a.weapon) {
-    b.hp -= aBodyDamage;
+  if (!a.weapon && !b.isPhasing) {
+    applyDamage(a, b, aBodyDamage);
   }
-  if (!b.weapon) {
-    a.hp -= bBodyDamage;
+  if (!b.weapon && !a.isPhasing) {
+    applyDamage(b, a, bBodyDamage);
   }
 
   a.ability?.onHit?.(b);
@@ -845,6 +1040,7 @@ function updateDaggerTracking(fighter) {
 
 function fireArrow(owner, weapon) {
   projectiles.push({
+    type: "arrow",
     x: owner.x + Math.cos(weapon.angle) * (owner.size + 5),
     y: owner.y + Math.sin(weapon.angle) * (owner.size + 5),
     vx: Math.cos(weapon.angle) * 8,
@@ -856,6 +1052,39 @@ function fireArrow(owner, weapon) {
 
   weapon.cooldown = weapon.fireRate;
   playSound(sounds.arrow);
+}
+
+function fireRocket(owner, weapon, type = "rocket") {
+  if (type === "grenade") {
+    projectiles.push({
+      type: "grenade",
+      x: owner.x,
+      y: owner.y,
+      vx: 0,
+      vy: 0,
+      owner,
+      damage: 3,
+      explosionRadius: weapon.explosionRadius,
+      color: "#4f9d69",
+      size: 9,
+      fuse: 36,
+    });
+    return;
+  }
+
+  const speed = 6;
+  projectiles.push({
+    type,
+    x: owner.x + Math.cos(weapon.angle) * (owner.size + 8),
+    y: owner.y + Math.sin(weapon.angle) * (owner.size + 8),
+    vx: Math.cos(weapon.angle) * speed,
+    vy: Math.sin(weapon.angle) * speed,
+    owner,
+    damage: 2,
+    explosionRadius: weapon.explosionRadius,
+    color: "#5a5a5a",
+    size: 11,
+  });
 }
 
 function updateWeapon(fighter) {
@@ -870,6 +1099,26 @@ function updateWeapon(fighter) {
 
     if (weapon.cooldown === 0) {
       fireArrow(fighter, weapon);
+    }
+    return;
+  }
+
+  if (weapon.name === "RPG" || weapon.name === "Demo") {
+    weapon.angle += weapon.rotationSpeed;
+
+    weapon.cooldown = Math.max(0, weapon.cooldown - 1);
+    if (weapon.cooldown === 0) {
+      fireRocket(fighter, weapon, "rocket");
+      weapon.explosionRadius += 1;
+      weapon.cooldown = weapon.fireRate;
+    }
+
+    if (weapon.name === "Demo") {
+      weapon.grenadeCooldown = Math.max(0, weapon.grenadeCooldown - 1);
+      if (weapon.grenadeCooldown === 0) {
+        fireRocket(fighter, weapon, "grenade");
+        weapon.grenadeCooldown = weapon.grenadeRate;
+      }
     }
     return;
   }
@@ -894,12 +1143,28 @@ function updateWeapon(fighter) {
     if (lastHit && now - lastHit < CONFIG.hitCooldownMs) {
       continue;
     }
+    if (other.isPhasing) {
+      continue;
+    }
 
-    if (Math.hypot(other.x - weaponX, other.y - weaponY) < other.size + weaponRadius) {
+    const hitDistance = pointToSegmentDistance(
+      other.x,
+      other.y,
+      fighter.x,
+      fighter.y,
+      weaponX,
+      weaponY,
+    );
+
+    if (hitDistance < other.size + weaponRadius) {
       weapon.hitCooldowns.set(other, now);
       weapon.onHit?.(other);
       fighter.ability?.onHit?.(other);
       other.ability?.onDamaged?.(fighter);
+      if (fighter.pendingHeal > 0) {
+        fighter.hp = Math.min(fighter.maxHp, fighter.hp + fighter.pendingHeal);
+        fighter.pendingHeal = 0;
+      }
     }
   }
 }
@@ -910,7 +1175,7 @@ function applyShovelEffect(attacker, target) {
 
   if (attacker.base.Weapon === "Split") {
     const hpLoss = Math.max(target.maxHp / 12, 1);
-    target.hp -= hpLoss;
+    applyDamage(attacker, target, hpLoss);
     spawnHealCube(target.x, target.y, hpLoss);
   }
 }
@@ -919,19 +1184,48 @@ function updateProjectiles() {
   for (const projectile of projectiles) {
     projectile.x += projectile.vx;
     projectile.y += projectile.vy;
+    if (projectile.type === "grenade") {
+      projectile.fuse -= 1;
+      if (projectile.fuse <= 0) {
+        spawnExplosion(
+          projectile.x,
+          projectile.y,
+          projectile.explosionRadius,
+          projectile.damage,
+          projectile.owner,
+          "#77c86a",
+        );
+        projectile.dead = true;
+      }
+    }
 
     for (const fighter of fighters) {
       if (fighter === projectile.owner) {
         continue;
       }
+      if (fighter.isPhasing) {
+        continue;
+      }
 
       if (Math.hypot(fighter.x - projectile.x, fighter.y - projectile.y) < fighter.size) {
-        fighter.hp -= projectile.damage;
-        projectile.dead = true;
-        projectile.owner.ability?.onHit?.(fighter);
-        fighter.ability?.onDamaged?.(projectile.owner);
+        if (projectile.type === "arrow") {
+          projectile.dead = true;
+          applyDamage(projectile.owner, fighter, projectile.damage);
+          projectile.owner.ability?.onHit?.(fighter);
+          fighter.ability?.onDamaged?.(projectile.owner);
+        } else if (projectile.type === "rocket") {
+          projectile.dead = true;
+          spawnExplosion(
+            projectile.x,
+            projectile.y,
+            projectile.explosionRadius,
+            projectile.damage,
+            projectile.owner,
+            projectile.type === "grenade" ? "#77c86a" : "#ff8c42",
+          );
+        }
 
-        if (projectile.owner.weapon?.name === "Bow") {
+        if (projectile.type === "arrow" && projectile.owner.weapon?.name === "Bow") {
           const bow = projectile.owner.weapon;
           bow.fireRate = Math.max(5, bow.fireRate - 1);
           bow.cooldown = Math.min(bow.cooldown, bow.fireRate);
@@ -942,6 +1236,23 @@ function updateProjectiles() {
 
   for (let index = projectiles.length - 1; index >= 0; index -= 1) {
     const projectile = projectiles[index];
+    const hitsWall =
+      projectile.x < 0 ||
+      projectile.x > canvas.width ||
+      projectile.y < 0 ||
+      projectile.y > canvas.height;
+    if (projectile.type === "rocket" && hitsWall) {
+      spawnExplosion(
+        clamp(projectile.x, 0, canvas.width),
+        clamp(projectile.y, 0, canvas.height),
+        projectile.explosionRadius,
+        projectile.damage,
+        projectile.owner,
+        projectile.type === "grenade" ? "#77c86a" : "#ff8c42",
+      );
+      projectile.dead = true;
+    }
+
     const offscreen =
       projectile.x < -50 ||
       projectile.x > canvas.width + 50 ||
@@ -987,7 +1298,7 @@ function updateHazards() {
       }
 
       if (hazard.type === "shard") {
-        fighter.hp -= hazard.damage;
+        applyDamage(hazard.owner, fighter, hazard.damage);
         hazard.dead = true;
       }
 
@@ -1005,11 +1316,67 @@ function updateHazards() {
   }
 }
 
+function resolveWeaponCollisions() {
+  for (let i = 0; i < fighters.length; i += 1) {
+    for (let j = i + 1; j < fighters.length; j += 1) {
+      const a = fighters[i];
+      const b = fighters[j];
+      if (!a.weapon || !b.weapon) {
+        continue;
+      }
+      if (a.isPhasing || b.isPhasing) {
+        continue;
+      }
+
+      const aPoint = getWeaponPoint(a);
+      const bPoint = getWeaponPoint(b);
+      const aRadius = a.weapon.hitRadius ?? 15;
+      const bRadius = b.weapon.hitRadius ?? 15;
+      const distance = Math.hypot(aPoint.x - bPoint.x, aPoint.y - bPoint.y);
+      if (distance >= aRadius + bRadius) {
+        continue;
+      }
+
+      a.weapon.clashCooldowns ??= new Map();
+      b.weapon.clashCooldowns ??= new Map();
+      const now = performance.now();
+      const aLast = a.weapon.clashCooldowns.get(b);
+      const bLast = b.weapon.clashCooldowns.get(a);
+      if ((aLast && now - aLast < CONFIG.hitCooldownMs) || (bLast && now - bLast < CONFIG.hitCooldownMs)) {
+        continue;
+      }
+
+      a.weapon.clashCooldowns.set(b, now);
+      b.weapon.clashCooldowns.set(a, now);
+
+      const safeDistance = distance || 0.1;
+      const nx = (bPoint.x - aPoint.x) / safeDistance;
+      const ny = (bPoint.y - aPoint.y) / safeDistance;
+      const clashForce = 3;
+
+      a.vx -= (nx * clashForce) / a.base.Weight;
+      a.vy -= (ny * clashForce) / a.base.Weight;
+      b.vx += (nx * clashForce) / b.base.Weight;
+      b.vy += (ny * clashForce) / b.base.Weight;
+
+      if (typeof a.weapon.angle === "number") {
+        a.weapon.angle -= 0.08;
+      }
+      if (typeof b.weapon.angle === "number") {
+        b.weapon.angle += 0.08;
+      }
+    }
+  }
+}
+
 function resolveFighterCollisions() {
   for (let i = 0; i < fighters.length; i += 1) {
     for (let j = i + 1; j < fighters.length; j += 1) {
       const a = fighters[i];
       const b = fighters[j];
+      if (a.isPhasing || b.isPhasing) {
+        continue;
+      }
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const distance = Math.hypot(dx, dy);
@@ -1034,6 +1401,18 @@ function resolveFighterCollisions() {
 }
 
 function drawProjectile(projectile) {
+  if (projectile.type === "rocket" || projectile.type === "grenade") {
+    ctx.save();
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
+    ctx.fillStyle = projectile.color;
+    ctx.fillRect(-projectile.size, -projectile.size / 2, projectile.size * 2, projectile.size);
+    ctx.fillStyle = "#f6d365";
+    ctx.fillRect(projectile.size, -projectile.size / 3, projectile.size, (projectile.size * 2) / 3);
+    ctx.restore();
+    return;
+  }
+
   ctx.save();
   ctx.translate(projectile.x, projectile.y);
   ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
@@ -1059,11 +1438,46 @@ function drawHazard(hazard) {
     ctx.lineTo(-hazard.radius, hazard.radius);
     ctx.closePath();
     ctx.fill();
-  }
+      }
 
-  if (hazard.type === "heal") {
+      if (hazard.type === "heal") {
     ctx.fillStyle = "#7ad66d";
     ctx.fillRect(-hazard.radius, -hazard.radius, hazard.radius * 2, hazard.radius * 2);
+  }
+
+  if (hazard.type === "explosion") {
+    ctx.globalAlpha = hazard.ttl / 14;
+    ctx.fillStyle = hazard.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, hazard.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawFallbackWeapon(fighter) {
+  const point = getWeaponPoint(fighter);
+  const weapon = fighter.weapon;
+  ctx.save();
+  ctx.translate(point.x, point.y);
+  ctx.rotate(weapon.angle);
+
+  if (weapon.name === "Staff") {
+    ctx.fillStyle = "#8b5a2b";
+    ctx.fillRect(-3, -18, 6, 36);
+    ctx.beginPath();
+    ctx.fillStyle = "#38b26d";
+    ctx.arc(0, -20, 8, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (weapon.name === "RPG" || weapon.name === "Demo") {
+    ctx.fillStyle = "#3f4a59";
+    ctx.fillRect(-16, -5, 32, 10);
+    ctx.fillStyle = "#d5a021";
+    ctx.fillRect(10, -3, 10, 6);
+  } else {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(-14, -4, 28, 8);
   }
 
   ctx.restore();
@@ -1093,6 +1507,8 @@ function drawFighter(fighter) {
     ctx.stroke();
   }
 
+  ctx.save();
+  ctx.globalAlpha = fighter.isPhasing ? 0.45 : 1;
   ctx.beginPath();
   ctx.arc(fighter.x, fighter.y, fighter.size, 0, Math.PI * 2);
   ctx.fillStyle = fighter.base.Color;
@@ -1102,7 +1518,16 @@ function drawFighter(fighter) {
   ctx.font = `${fighter.size * 0.8}px Courier New`;
   ctx.fillText(Math.floor(fighter.hp), fighter.x, fighter.y);
 
-  if (!fighter.weapon || !images[fighter.weapon.name]) {
+  if (fighter.abilityName === "Fortress") {
+    ctx.strokeStyle = "#7d8a97";
+    ctx.lineWidth = 6 + Math.min(fighter.shield, 6);
+    ctx.beginPath();
+    ctx.arc(fighter.x, fighter.y, fighter.size + 8, -0.8, 0.8);
+    ctx.stroke();
+  }
+
+  if (!fighter.weapon) {
+    ctx.restore();
     return;
   }
 
@@ -1113,13 +1538,27 @@ function drawFighter(fighter) {
   ctx.save();
   ctx.translate(weaponX, weaponY);
   ctx.rotate(fighter.weapon.angle);
-  ctx.drawImage(images[fighter.weapon.name], -15, -15, 30, 30);
+  if (images[fighter.weapon.name]) {
+    ctx.drawImage(images[fighter.weapon.name], -15, -15, 30, 30);
+  } else {
+    ctx.restore();
+    drawFallbackWeapon(fighter);
+    ctx.restore();
+    return;
+  }
+  ctx.restore();
   ctx.restore();
 }
 
 function getBattleDetails(fighter) {
   const weapon = fighter.weapon;
   const ability = fighter.base.Ability;
+  if (fighter.abilityName === "Fortress") {
+    return [
+      `HP: ${Math.floor(fighter.hp)}`,
+      `SHIELD: ${fighter.shield}`,
+    ];
+  }
   if (ability === "Yoink" || ability === "Hoarder") {
     const lines = [`HP: ${Math.floor(fighter.hp)}`, `ABL: ${ability}`];
     const yoink = fighter.ability;
@@ -1134,6 +1573,9 @@ function getBattleDetails(fighter) {
     const lines = [`HP: ${Math.floor(fighter.hp)}`];
     if (ability) {
       lines.push(`ABL: ${ability}`);
+    }
+    if (fighter.isDisarmed) {
+      lines.push("DISABLED");
     }
     return lines;
   }
@@ -1186,6 +1628,32 @@ function getBattleDetails(fighter) {
     }
     return lines;
   }
+  if (weapon.name === "RPG" || weapon.name === "Demo") {
+    const lines = [
+      `HP: ${Math.floor(fighter.hp)}`,
+      `BLAST: ${Math.floor(weapon.explosionRadius)}`,
+      `CD: ${weapon.fireRate}`,
+    ];
+    if (weapon.name === "Demo") {
+      lines.push(`GRN: ${weapon.grenadeRate}`);
+    }
+    return lines;
+  }
+  if (weapon.name === "Staff") {
+    return [
+      `HP: ${Math.floor(fighter.hp)}`,
+      "STAFF: HEAL",
+    ];
+  }
+
+  if (ability === "Phase") {
+    const phase = fighter.ability;
+    return [
+      `HP: ${Math.floor(fighter.hp)}`,
+      `PHASE: ${fighter.isPhasing ? "ON" : "OFF"}`,
+      `CD: ${fighter.isPhasing ? Math.ceil(phase.activeTimer / 60) : Math.ceil(phase.cooldown / 60)}`,
+    ];
+  }
 
   return [`HP: ${Math.floor(fighter.hp)}`];
 }
@@ -1195,7 +1663,7 @@ function renderHud() {
   const right = fighters[1];
 
   ui.leftName.textContent = left?.name ?? "";
-  ui.rightName.textContent = right?.name ?? "";
+  ui.rightName.textContent = right ? `${right.name}  x${battleSpeed.toFixed(2)}` : "";
   ui.leftStats.innerHTML = left ? getBattleDetails(left).join("<br>") : "";
   ui.rightStats.innerHTML = right ? getBattleDetails(right).join("<br>") : "";
 }
@@ -1225,16 +1693,24 @@ function pruneDefeated() {
 function frame() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (freezeFrames > 0) {
-    freezeFrames -= 1;
-  } else {
-    updateFighters();
-  }
+  const steps = Math.max(1, Math.round(battleSpeed));
+  const shouldSkipFrame = battleSpeed < 1 && Math.random() > battleSpeed;
 
-  updateProjectiles();
-  updateHazards();
-  resolveFighterCollisions();
-  pruneDefeated();
+  if (!shouldSkipFrame) {
+    for (let step = 0; step < steps; step += 1) {
+      if (freezeFrames > 0) {
+        freezeFrames -= 1;
+      } else {
+        updateFighters();
+      }
+
+      updateProjectiles();
+      updateHazards();
+      resolveWeaponCollisions();
+      resolveFighterCollisions();
+      pruneDefeated();
+    }
+  }
 
   for (const hazard of hazards) {
     drawHazard(hazard);
