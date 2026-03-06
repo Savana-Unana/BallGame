@@ -26,25 +26,25 @@
 - Super RPG
 - Fortress
 - Staff
+- Mace
+- Super Mace
+- Grapple
+- Portal
+- Speed
+- Super Speed
+- Time
 
 ## In Progress
 - Super Axe
 - Super Shovel
 - Clone
 - Super Clone
-- Grapple
 - Super Grapple
 - Super Yoink
-- Portal
-- Speed
-- Super Speed
 - Phase
 
 ## Not Started
-- Mace
-- Super Mace
 - Stonks
-- Time
 - Omega
 - Mjolnir
 - Reaper

@@ -376,7 +376,7 @@
     "Ability": null,
     "Weapon": "Portal",
     "Effect": "Shoots 2 portals (orange and blue) that teleport players between both. Teleporting deals 1dmg to opponent. +1 Portal reload-speed each shot.",
-    "EngineAbility": "Portal"
+    "EngineWeapon": "Portal"
   },
   "Speed": {
     "HP": 80,
@@ -400,7 +400,7 @@
     "Ability": "SpeedForce",
     "Weapon": null,
     "Effect": "+1 speed each hit. Speeds up for a second leaving fire tracks that deal +1 hp when the opponent touches it after a certain amount of distance is traveled. It sometimes uses the Phase Ability, and when the dash is finishes, a lightning like Thor's is shot out.",
-    "EngineAbility": "Speed"
+    "EngineAbility": "SpeedForce"
   },
   "Mace": {
     "HP": 100,
@@ -411,7 +411,8 @@
     "HPColor": "white",
     "Ability": null,
     "Weapon": "Mace",
-    "Effect": "Stuns whenever it hits. +1 stun-time each hit."
+    "Effect": "Stuns whenever it hits. +1 stun-time each hit.",
+    "EngineWeapon": "Mace"
   },
   "Super Mace": {
     "HP": 130,
@@ -422,7 +423,8 @@
     "HPColor": "white",
     "Ability": null,
     "Weapon": "Concussor",
-    "Effect": "Stuns whenever it hits, with a yoink effect after. +1 stun-time each hit."
+    "Effect": "Stuns whenever it hits, with a yoink effect after. +1 stun-time each hit.",
+    "EngineWeapon": "Concussor"
   },
   "Stonks": {
     "HP": 90,
@@ -444,7 +446,8 @@
     "HPColor": "white",
     "Ability": "Time",
     "Weapon": null,
-    "Effect": "Every 3sec, it rewinds itself for 2 sec, undamaging and reversing all it's movement."
+    "Effect": "Every 3sec, it rewinds itself for 2 sec, undamaging and reversing all it's movement.",
+    "EngineAbility": "Time"
   },
   "Omega": {
     "HP": 110,

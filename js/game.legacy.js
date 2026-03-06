@@ -72,6 +72,7 @@ const sounds = {
   hit: new Audio("assets/hit.mp3"),
   arrow: new Audio("assets/shot.mp3"),
   yoink: new Audio("assets/yoink.mp3"),
+  clash: new Audio("assets/clash.mp3"),
 };
 
 const weaponFactories = {
@@ -93,8 +94,8 @@ const weaponFactories = {
       name: "Bow",
       angle: 0,
       rotationSpeed: 0.1,
-      cooldown: 28,
-      fireRate: 28,
+      cooldown: 0,
+      fireRate: 30,
     };
   },
   Dagger() {
@@ -137,7 +138,8 @@ const weaponFactories = {
       rotationSpeed: 0.1,
       onHit(target) {
         applyShovelEffect(this.owner, target);
-        this.digLeft = Math.max(0, this.digLeft - 100 / 12);
+        applyDamage(this.owner, target, 1);
+        this.digLeft = Math.max(0, this.digLeft - 100 / 5);
       },
     };
   },
@@ -148,7 +150,7 @@ const weaponFactories = {
       rotationSpeed: 0.1,
       cooldown: 0,
       fireRate: 90,
-      explosionRadius: 34,
+      explosionRadius: 50,
     };
   },
   Demo() {
@@ -160,7 +162,7 @@ const weaponFactories = {
       grenadeCooldown: 0,
       fireRate: 90,
       grenadeRate: 75,
-      explosionRadius: 34,
+      explosionRadius: 50,
     };
   },
   Staff() {
@@ -172,45 +174,6 @@ const weaponFactories = {
       onHit(target) {
         applyDamage(this.owner, target, 1);
         this.owner.pendingHeal = (this.owner.pendingHeal ?? 0) + 1;
-      },
-    };
-  },
-  Ruler() {
-    return {
-      name: "Ruler",
-      hitRadius: 16,
-      angle: 0,
-      rotationSpeed: 0.08,
-      cooldown: 0,
-      fireRate: 120,
-      onHit(target) {
-        applyDamage(this.owner, target, 1);
-        this.fireRate = Math.max(20, this.fireRate - 1);
-      },
-    };
-  },
-  Needle() {
-    return {
-      name: "Needle",
-      hitRadius: 12,
-      angle: 0,
-      rotationSpeed: 0.12,
-      onHit(target) {
-        const initialInterval = 600;
-        const intervalStep = 30;
-        const minimumInterval = 60;
-
-        if (!target.needleInterval) {
-          target.needleInterval = initialInterval;
-          target.needleTimer = initialInterval;
-          return;
-        }
-
-        target.needleInterval = Math.max(
-          minimumInterval,
-          target.needleInterval - intervalStep,
-        );
-        target.needleTimer = Math.max(1, target.needleTimer - intervalStep);
       },
     };
   },
@@ -529,64 +492,11 @@ const abilityFactories = {
   Fortress() {
     return {
       owner: null,
-      angle: 0,
-      rotationSpeed: 0.05,
-      hitRadius: 11,
-      hitCooldowns: new Map(),
       init(owner) {
         this.owner = owner;
-        owner.shield = Math.max(1, owner.shield || 0);
-      },
-      tick() {
-        this.angle += this.rotationSpeed;
       },
       onHit() {
         this.owner.shield += 1;
-      },
-    };
-  },
-  Parry() {
-    return {
-      owner: null,
-      cooldown: 240,
-      activeTimer: 0,
-      activeLength: 42,
-      init(owner) {
-        this.owner = owner;
-      },
-      tick() {
-        if (this.activeTimer > 0) {
-          this.activeTimer -= 1;
-          this.owner.isParrying = true;
-          if (this.activeTimer === 0) {
-            this.owner.isParrying = false;
-            this.cooldown = 150;
-          }
-          return;
-        }
-
-        this.owner.isParrying = false;
-        this.cooldown -= 1;
-        if (this.cooldown <= 0) {
-          this.activeTimer = this.activeLength;
-        }
-      },
-      onParry() {
-        this.activeLength += 2;
-      },
-    };
-  },
-  Stunlock() {
-    const base = abilityFactories.Parry();
-    return {
-      ...base,
-      activeLength: 48,
-      onParry(source) {
-        this.activeLength += 2;
-        if (source) {
-          source.stunTimer = Math.max(source.stunTimer ?? 0, this.activeLength);
-          source.disarmTimer = Math.max(source.disarmTimer ?? 0, this.activeLength);
-        }
       },
     };
   },
@@ -649,51 +559,6 @@ const abilityFactories = {
       },
     };
   },
-  Mother() {
-    return {
-      owner: null,
-      spawned: false,
-      children: [],
-      init(owner) {
-        this.owner = owner;
-      },
-      tick() {
-        if (!this.spawned) {
-          this.spawned = true;
-          this.children.push(spawnChild(this.owner, -1));
-          this.children.push(spawnChild(this.owner, 1));
-        }
-      },
-    };
-  },
-  Daycare() {
-    return {
-      owner: null,
-      spawned: false,
-      children: [],
-      init(owner) {
-        this.owner = owner;
-      },
-      tick() {
-        if (!this.spawned) {
-          this.spawned = true;
-          this.children.push(spawnChild(this.owner, -1));
-          this.children.push(spawnChild(this.owner, 1));
-        }
-
-        const livingChildren = this.children.filter((child) => fighters.includes(child));
-        for (const child of livingChildren) {
-          if (Math.hypot(child.x - this.owner.x, child.y - this.owner.y) <= child.size + this.owner.size) {
-            this.owner.hp = Math.min(this.owner.maxHp, this.owner.hp + 1);
-            for (const sibling of livingChildren) {
-              sibling.hp = Math.min(sibling.maxHp, sibling.hp + 1);
-            }
-            break;
-          }
-        }
-      },
-    };
-  },
   Math() {
     return {
       owner: null,
@@ -717,29 +582,23 @@ function playSound(sound) {
   sound.play().catch(() => {});
 }
 
-function applyDamage(source, target, amount, ignoreParry = false) {
+function applyDamage(source, target, amount) {
   if (!target || amount <= 0) {
     return 0;
   }
 
-  if (areFamilySafe(source, target)) {
-    return 0;
+  let remaining = amount;
+  if (target.shield > 0) {
+    const absorbed = Math.min(target.shield, remaining);
+    target.shield -= absorbed;
+    remaining -= absorbed;
   }
 
-  if (
-    !ignoreParry &&
-    source &&
-    target.ability &&
-    target.ability.activeTimer > 0 &&
-    (target.abilityName === "Parry" || target.abilityName === "Stunlock")
-  ) {
-    target.ability.onParry?.(source);
-    applyDamage(target, source, amount + 1, true);
-    return 0;
+  if (remaining > 0) {
+    target.hp -= remaining;
   }
 
-  target.hp -= amount;
-  return amount;
+  return remaining;
 }
 
 function spawnShards(x, y, count, owner, ttl = 600) {
@@ -766,29 +625,6 @@ function spawnHealCube(x, y, amount) {
     ttl: 900,
     amount,
   });
-}
-
-function spawnChild(owner, direction) {
-  const childBase = {
-    HP: 30,
-    Size: 25,
-    Speed: 4,
-    Weight: 0.6,
-    Color: "lightblue",
-    HPColor: "black",
-    Weapon: null,
-    Ability: null,
-  };
-
-  const child = createFighter(
-    `${owner.name} Child`,
-    childBase,
-    owner.x + direction * (owner.size + 20),
-    owner.y - 10,
-  );
-  child.isChild = true;
-  child.parent = owner;
-  return child;
 }
 
 function spawnExplosion(x, y, radius, damage, owner, color = "#ff9c2f") {
@@ -822,33 +658,11 @@ function getWeaponPoint(fighter) {
     return null;
   }
 
-  const reach = fighter.size + Math.max(8, fighter.size * 0.35);
+  const reach = fighter.size + 15;
   return {
     x: fighter.x + reach * Math.cos(weapon.angle),
     y: fighter.y + reach * Math.sin(weapon.angle),
   };
-}
-
-function getFortressShieldPoints(fighter) {
-  if (fighter.abilityName !== "Fortress" || !fighter.ability || fighter.shield <= 0) {
-    return [];
-  }
-
-  const count = Math.max(1, Math.floor(fighter.shield));
-  const orbitRadius = fighter.size + 18;
-  const points = [];
-
-  for (let index = 0; index < count; index += 1) {
-    const angle = fighter.ability.angle + (Math.PI * 2 * index) / count;
-    points.push({
-      x: fighter.x + Math.cos(angle) * orbitRadius,
-      y: fighter.y + Math.sin(angle) * orbitRadius,
-      radius: fighter.ability.hitRadius,
-      angle,
-    });
-  }
-
-  return points;
 }
 
 function pointToSegmentDistance(px, py, ax, ay, bx, by) {
@@ -876,7 +690,30 @@ function areFamilySafe(source, target) {
 
   const sourceParent = source.isChild ? source.parent : source;
   const targetParent = target.isChild ? target.parent : target;
-  return sourceParent && targetParent && sourceParent === targetParent;
+  return Boolean(sourceParent && targetParent && sourceParent === targetParent);
+}
+
+function getFortressShieldPoints(fighter) {
+  if (fighter.abilityName !== "Fortress" || !fighter.ability) {
+    return [];
+  }
+
+  const points = [];
+  const shieldCount = Math.max(1, Math.floor(fighter.shield || 1));
+  const orbitRadius = fighter.size + 22;
+
+  for (let index = 0; index < shieldCount; index += 1) {
+    const angle =
+      fighter.ability.angle + (Math.PI * 2 * index) / shieldCount;
+    points.push({
+      x: fighter.x + Math.cos(angle) * orbitRadius,
+      y: fighter.y + Math.sin(angle) * orbitRadius,
+      radius: fighter.ability.hitRadius ?? 16,
+      angle,
+    });
+  }
+
+  return points;
 }
 
 function formatValue(value) {
@@ -1040,11 +877,6 @@ function createFighter(name, base, x, y, isDuplicate = false) {
     maxSize: base.Size,
     shield: 0,
     isPhasing: false,
-    isParrying: false,
-    stunTimer: 0,
-    disarmTimer: 0,
-    needleInterval: 0,
-    needleTimer: 0,
     rotation: 0,
     spinSpeed: Math.random() * 0.2 + 0.1,
     weapon: engineWeapon ? weaponFactories[engineWeapon]?.() ?? null : null,
@@ -1057,6 +889,10 @@ function createFighter(name, base, x, y, isDuplicate = false) {
 
   if (fighter.weapon) {
     fighter.weapon.owner = fighter;
+    if (fighter.weapon.name === "Bow") {
+      fighter.weapon.fireRate = 35;
+      fighter.weapon.cooldown = 14;
+    }
   }
 
   if (engineAbility) {
@@ -1074,6 +910,884 @@ function resetMatch() {
   hazards.length = 0;
   freezeFrames = 0;
 }
+
+sounds.explosionQuiet = new Audio("assets/hit.mp3");
+sounds.explosionQuiet.volume = 0.12;
+
+function spawnChild(owner, direction) {
+  const babyBase = roster?.Baby ?? {};
+  const childBase = {
+    HP: 30,
+    Size: babyBase.Size ?? 24,
+    Speed: babyBase.Speed ?? 2,
+    Weight: babyBase.Weight ?? 0.7,
+    Color: babyBase.Color ?? "pink",
+    HPColor: babyBase.HPColor ?? "black",
+    Ability: null,
+    Weapon: null,
+  };
+
+  const child = createFighter(
+    `${owner.name} Child`,
+    childBase,
+    owner.x + direction * ((owner.size ?? 30) + (childBase.Size ?? 24) + 8),
+    owner.y - 8,
+  );
+  child.isChild = true;
+  child.parent = owner;
+  child.vx = direction * 2;
+  child.vy = -2;
+  return child;
+}
+
+weaponFactories.Bow = function BowFactory() {
+  return {
+    name: "Bow",
+    angle: 0,
+    rotationSpeed: 0.1,
+    cooldown: 12,
+    fireRate: 12,
+    arrowCount: 1,
+  };
+};
+
+weaponFactories.Needle = function NeedleFactory() {
+  return {
+    name: "Needle",
+    hitRadius: 12,
+    angle: 0,
+    rotationSpeed: 0.12,
+    onHit(target) {
+      const initialInterval = 600;
+      const intervalStep = 30;
+      const minimumInterval = 6;
+
+      if (!target.needleInterval) {
+        target.needleInterval = initialInterval;
+        target.needleTimer = initialInterval;
+        return;
+      }
+
+      target.needleInterval = Math.max(
+        minimumInterval,
+        target.needleInterval - intervalStep,
+      );
+      target.needleTimer = Math.max(1, target.needleTimer - intervalStep);
+    },
+  };
+};
+
+weaponFactories.Mace = function MaceFactory() {
+  return {
+    name: "Mace",
+    hitRadius: 18,
+    angle: 0,
+    rotationSpeed: 0.09,
+    stunLength: 36,
+    onHit(target) {
+      applyDamage(this.owner, target, 1);
+      target.stunTimer = Math.max(target.stunTimer ?? 0, this.stunLength);
+      this.stunLength += 1;
+    },
+  };
+};
+
+weaponFactories.Concussor = function ConcussorFactory() {
+  return {
+    name: "Concussor",
+    hitRadius: 20,
+    angle: 0,
+    rotationSpeed: 0.09,
+    stunLength: 42,
+    onHit(target) {
+      applyDamage(this.owner, target, 1);
+      target.stunTimer = Math.max(target.stunTimer ?? 0, this.stunLength);
+      target.disarmTimer = Math.max(
+        target.disarmTimer ?? 0,
+        this.stunLength,
+      );
+      this.stunLength += 1;
+    },
+  };
+};
+
+abilityFactories.Parry = function ParryFactory() {
+  return {
+    owner: null,
+    cooldown: 240,
+    activeTimer: 0,
+    activeLength: 48,
+    init(owner) {
+      this.owner = owner;
+    },
+    tick() {
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        this.owner.isParrying = true;
+        return;
+      }
+
+      this.owner.isParrying = false;
+      this.cooldown -= 1;
+      if (this.cooldown <= 0) {
+        this.activeTimer = this.activeLength;
+        this.cooldown = 240;
+      }
+    },
+    onParry() {
+      this.activeLength += 2;
+    },
+  };
+};
+
+abilityFactories.Stunlock = function StunlockFactory() {
+  return {
+    owner: null,
+    cooldown: 270,
+    activeTimer: 0,
+    activeLength: 56,
+    init(owner) {
+      this.owner = owner;
+    },
+    tick() {
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        this.owner.isParrying = true;
+        return;
+      }
+
+      this.owner.isParrying = false;
+      this.cooldown -= 1;
+      if (this.cooldown <= 0) {
+        this.activeTimer = this.activeLength;
+        this.cooldown = 270;
+      }
+    },
+    onParry(source) {
+      this.activeLength += 2;
+      if (!source) {
+        return;
+      }
+      source.stunTimer = Math.max(source.stunTimer ?? 0, this.activeLength);
+      source.disarmTimer = Math.max(source.disarmTimer ?? 0, this.activeLength);
+    },
+  };
+};
+
+abilityFactories.Mother = function MotherFactory() {
+  return {
+    owner: null,
+    timer: 600,
+    children: [],
+    init(owner) {
+      this.owner = owner;
+      this.timer = 600;
+      this.children = [];
+    },
+    tick() {
+      this.timer -= 1;
+      this.children = this.children.filter((child) => fighters.includes(child));
+      if (this.timer <= 0 && this.children.length === 0) {
+        this.children.push(spawnChild(this.owner, -1));
+        this.children.push(spawnChild(this.owner, 1));
+        this.timer = 600;
+      }
+    },
+  };
+};
+
+abilityFactories.Daycare = function DaycareFactory() {
+  return {
+    owner: null,
+    timer: 600,
+    children: [],
+    init(owner) {
+      this.owner = owner;
+      this.timer = 600;
+      this.children = [];
+    },
+    tick() {
+      this.timer -= 1;
+      this.children = this.children.filter((child) => fighters.includes(child));
+      if (this.timer <= 0 && this.children.length === 0) {
+        this.children.push(spawnChild(this.owner, -1));
+        this.children.push(spawnChild(this.owner, 1));
+        this.timer = 600;
+      }
+
+      for (const child of this.children) {
+        if (Math.hypot(child.x - this.owner.x, child.y - this.owner.y) <= child.size + this.owner.size) {
+          child.hp = Math.min(child.maxHp, child.hp + 1);
+          this.owner.hp = Math.min(this.owner.maxHp, this.owner.hp + 1);
+        }
+      }
+    },
+  };
+};
+
+abilityFactories.Fortress = function FortressFactory() {
+  return {
+    owner: null,
+    angle: 0,
+    rotationSpeed: 0.08,
+    hitRadius: 16,
+    init(owner) {
+      this.owner = owner;
+      owner.shield = Math.max(1, owner.shield || 1);
+    },
+    tick() {
+      this.angle += this.rotationSpeed;
+    },
+    onHit() {
+      this.owner.shield += 1;
+    },
+  };
+};
+
+const originalApplyDamage = applyDamage;
+applyDamage = function applyDamageOverride(source, target, amount, ignoreParry = false) {
+  const dealt = originalApplyDamage(source, target, amount, ignoreParry);
+  if (dealt > 0 && source?.weapon?.name === "Bow") {
+    source.weapon.arrowCount = (source.weapon.arrowCount ?? 1) + 1;
+  }
+  return dealt;
+};
+
+const originalSpawnExplosion = spawnExplosion;
+spawnExplosion = function spawnExplosionOverride(...args) {
+  playSound(sounds.explosionQuiet);
+  return originalSpawnExplosion(...args);
+};
+
+const originalGetBodyDamage = getBodyDamage;
+getBodyDamage = function getBodyDamageOverride(attacker, target) {
+  if (attacker?.abilityName === "Lasso") {
+    return 2;
+  }
+  return originalGetBodyDamage(attacker, target);
+};
+
+fireArrow = function fireArrowOverride(owner, weapon) {
+  const arrowCount = Math.max(1, weapon.arrowCount ?? 1);
+  const spread = Math.min(0.45, 0.06 * (arrowCount - 1));
+
+  for (let index = 0; index < arrowCount; index += 1) {
+    const offset =
+      arrowCount === 1 ? 0 : -spread / 2 + (spread * index) / (arrowCount - 1);
+    const angle = weapon.angle + offset;
+    projectiles.push({
+      type: "arrow",
+      x: owner.x + Math.cos(angle) * (owner.size + 5),
+      y: owner.y + Math.sin(angle) * (owner.size + 5),
+      vx: Math.cos(angle) * 8,
+      vy: Math.sin(angle) * 8,
+      owner,
+      damage: 1,
+      size: owner.size * 2.4,
+    });
+  }
+
+  weapon.cooldown = weapon.fireRate;
+  playSound(sounds.arrow);
+};
+
+applyShovelEffect = function applyShovelEffectOverride(attacker, target) {
+  const reduction = Math.max(target.maxSize / 12, 1);
+  const minSize = target.maxSize / 12;
+  const nextSize = Math.max(minSize, target.size - reduction);
+  const hitMinimum = target.size > minSize && nextSize <= minSize;
+  target.size = nextSize;
+
+  if (hitMinimum) {
+    applyDamage(attacker, target, 10);
+  }
+
+  if (attacker.base.Weapon === "Split") {
+    const hpLoss = Math.max(target.maxHp / 12, 1);
+    applyDamage(attacker, target, hpLoss);
+    spawnHealCube(target.x, target.y, hpLoss);
+  }
+};
+
+const previousCreateFighter = createFighter;
+createFighter = function createFighterOverride(name, base, x, y, isDuplicate = false) {
+  const fighter = previousCreateFighter(name, base, x, y, isDuplicate);
+  if (fighter.weapon?.name === "Bow") {
+    fighter.weapon.cooldown = 12;
+    fighter.weapon.fireRate = 12;
+    fighter.weapon.arrowCount = Math.max(1, fighter.weapon.arrowCount ?? 1);
+  }
+  if (fighter.abilityName === "Fortress") {
+    fighter.shield = Math.max(1, fighter.shield || 1);
+  }
+  return fighter;
+};
+
+abilityFactories.Glass = function GlassFactory() {
+  return {
+    owner: null,
+    init(owner) {
+      this.owner = owner;
+    },
+    onDamaged() {
+      spawnShards(this.owner.x, this.owner.y, 1, this.owner, 999999);
+      const shard = hazards[hazards.length - 1];
+      if (shard) {
+        shard.persistent = true;
+      }
+    },
+  };
+};
+
+spawnShards = function spawnShardsOverride(x, y, count, owner, ttl = 999999) {
+  for (let index = 0; index < count; index += 1) {
+    const angle = (Math.PI * 2 * index) / Math.max(count, 1);
+    hazards.push({
+      type: "shard",
+      x: x + Math.cos(angle) * 28,
+      y: y + Math.sin(angle) * 28,
+      radius: 10,
+      damage: 1,
+      owner,
+      ttl,
+      persistent: true,
+    });
+  }
+};
+
+updateHazards = function updateHazardsOverride() {
+  for (const hazard of hazards) {
+    if (!hazard.persistent) {
+      hazard.ttl -= 1;
+    }
+
+    for (const fighter of fighters) {
+      if (hazard.type === "shard" && hazard.owner === fighter) {
+        continue;
+      }
+
+      if (hazard.type === "shard" && areFamilySafe(hazard.owner, fighter)) {
+        continue;
+      }
+
+      if (Math.hypot(fighter.x - hazard.x, fighter.y - hazard.y) > fighter.size + hazard.radius) {
+        continue;
+      }
+
+      if (hazard.type === "shard") {
+        applyDamage(hazard.owner, fighter, hazard.damage);
+        if (!hazard.persistent) {
+          hazard.dead = true;
+        }
+      }
+
+      if (hazard.type === "heal") {
+        fighter.hp = Math.min(fighter.maxHp, fighter.hp + hazard.amount);
+        hazard.dead = true;
+      }
+
+      if (hazard.type === "explosion") {
+        applyDamage(hazard.owner, fighter, hazard.damage);
+      }
+    }
+  }
+
+  for (let index = hazards.length - 1; index >= 0; index -= 1) {
+    const hazard = hazards[index];
+    if (hazard.dead || (!hazard.persistent && hazard.ttl <= 0)) {
+      hazards.splice(index, 1);
+    }
+  }
+};
+
+abilityFactories.Yoink = function YoinkFactory() {
+  return {
+    owner: null,
+    timer: 180,
+    activeTimer: 0,
+    stealCooldown: 0,
+    stolenThing: null,
+    originalWeapon: null,
+    originalWeaponLabel: null,
+    disabledTarget: null,
+    disabledWeapon: null,
+    disabledAbility: null,
+    disabledAbilityName: null,
+    init(owner) {
+      this.owner = owner;
+      this.originalWeapon = owner.weapon ? { ...owner.weapon } : null;
+      if (this.originalWeapon) {
+        this.originalWeapon.owner = owner;
+      }
+      this.originalWeaponLabel = owner.base.Weapon;
+    },
+    tick() {
+      this.timer = Math.max(0, this.timer - 1);
+      this.stealCooldown = Math.max(0, this.stealCooldown - 1);
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        if (this.activeTimer <= 0) {
+          this.restoreYoinkState();
+        }
+      }
+    },
+    onHit(target) {
+      if (!target || this.stealCooldown > 0) {
+        return;
+      }
+
+      if (this.activeTimer > 0) {
+        this.restoreYoinkState();
+      }
+
+      if (target.weapon) {
+        this.owner.weapon = { ...target.weapon };
+        this.owner.weapon.owner = this.owner;
+        this.stolenThing = target.base.Weapon;
+      } else {
+        this.owner.weapon = null;
+        this.stolenThing = target.base.Ability ?? "None";
+      }
+
+      applyDamage(this.owner, target, 1);
+      this.disabledTarget = target;
+      this.disabledWeapon = target.weapon;
+      this.disabledAbility = target.ability;
+      this.disabledAbilityName = target.abilityName;
+      target.weapon = null;
+      target.ability = null;
+      target.abilityName = null;
+      target.isDisarmed = true;
+      this.activeTimer = 240;
+      this.timer = 180;
+      this.stealCooldown = 120;
+      playSound(sounds.yoink);
+    },
+    restoreYoinkState() {
+      this.owner.weapon = this.originalWeapon ? { ...this.originalWeapon } : null;
+      if (this.owner.weapon) {
+        this.owner.weapon.owner = this.owner;
+      }
+
+      if (this.disabledTarget) {
+        this.disabledTarget.weapon = this.disabledWeapon;
+        if (this.disabledTarget.weapon) {
+          this.disabledTarget.weapon.owner = this.disabledTarget;
+        }
+        this.disabledTarget.ability = this.disabledAbility;
+        this.disabledTarget.abilityName = this.disabledAbilityName;
+        this.disabledTarget.isDisarmed = false;
+      }
+
+      this.disabledTarget = null;
+      this.disabledWeapon = null;
+      this.disabledAbility = null;
+      this.disabledAbilityName = null;
+      this.stolenThing = null;
+      this.activeTimer = 0;
+    },
+  };
+};
+
+abilityFactories.Parry = function WorkingParryFactory() {
+  return {
+    owner: null,
+    cooldownMax: 240,
+    cooldown: 90,
+    activeTimer: 0,
+    activeLength: 54,
+    init(owner) {
+      this.owner = owner;
+    },
+    tick() {
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        this.owner.isParrying = true;
+        return;
+      }
+
+      this.owner.isParrying = false;
+      this.cooldown -= 1;
+      if (this.cooldown <= 0) {
+        this.activeTimer = this.activeLength;
+        this.cooldown = this.cooldownMax;
+      }
+    },
+    onParry() {
+      this.activeLength += 2;
+    },
+  };
+};
+
+abilityFactories.Stunlock = function WorkingStunlockFactory() {
+  return {
+    owner: null,
+    cooldownMax: 270,
+    cooldown: 100,
+    activeTimer: 0,
+    activeLength: 62,
+    init(owner) {
+      this.owner = owner;
+    },
+    tick() {
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        this.owner.isParrying = true;
+        return;
+      }
+
+      this.owner.isParrying = false;
+      this.cooldown -= 1;
+      if (this.cooldown <= 0) {
+        this.activeTimer = this.activeLength;
+        this.cooldown = this.cooldownMax;
+      }
+    },
+    onParry(source) {
+      this.activeLength += 2;
+      if (!source) {
+        return;
+      }
+      source.stunTimer = Math.max(source.stunTimer ?? 0, this.activeLength);
+      source.disarmTimer = Math.max(source.disarmTimer ?? 0, this.activeLength);
+    },
+  };
+};
+
+getFortressShieldPoints = function getFortressShieldPointsOverride(fighter) {
+  if (fighter.abilityName !== "Fortress" || !fighter.ability) {
+    return [];
+  }
+
+  const points = [];
+  const shieldCount = Math.max(1, Math.floor(fighter.shield || 1));
+  const orbitRadius = fighter.size + 22;
+
+  for (let index = 0; index < shieldCount; index += 1) {
+    const angle =
+      fighter.ability.angle + (Math.PI * 2 * index) / shieldCount;
+    points.push({
+      x: fighter.x + Math.cos(angle) * orbitRadius,
+      y: fighter.y + Math.sin(angle) * orbitRadius,
+      radius: fighter.ability.hitRadius ?? 16,
+      angle,
+    });
+  }
+
+  return points;
+};
+
+const previousResolveWeaponCollisions = resolveWeaponCollisions;
+resolveWeaponCollisions = function resolveWeaponCollisionsOverride() {
+  const disabledBowWeapons = [];
+  for (const fighter of fighters) {
+    if (fighter.weapon?.name === "Bow") {
+      disabledBowWeapons.push([fighter, fighter.weapon]);
+      fighter.weapon = null;
+    }
+  }
+
+  previousResolveWeaponCollisions();
+
+  for (const [fighter, weapon] of disabledBowWeapons) {
+    fighter.weapon = weapon;
+  }
+};
+
+applyDamage = function applyDamageFinalOverride(source, target, amount, ignoreParry = false) {
+  if (!target || amount <= 0) {
+    return 0;
+  }
+
+  if (areFamilySafe(source, target)) {
+    return 0;
+  }
+
+  if (
+    !ignoreParry &&
+    source &&
+    target.ability &&
+    target.ability.activeTimer > 0 &&
+    (target.abilityName === "Parry" || target.abilityName === "Stunlock")
+  ) {
+    target.ability.onParry?.(source);
+    applyDamage(target, source, amount + 1, true);
+    return 0;
+  }
+
+  target.hp -= amount;
+
+  if (source?.weapon?.name === "Bow") {
+    source.weapon.arrowCount = (source.weapon.arrowCount ?? 1) + 1;
+    source.weapon.fireRate = Math.max(4, source.weapon.fireRate - 1);
+    source.weapon.cooldown = Math.min(source.weapon.cooldown, source.weapon.fireRate);
+  }
+
+  return amount;
+};
+
+weaponFactories.Bow = function BowFactory() {
+  return {
+    name: "Bow",
+    angle: 0,
+    rotationSpeed: 0.1,
+    cooldown: 35,
+    fireRate: 14,
+  };
+};
+
+abilityFactories.Parry = function ParryFactory() {
+  return {
+    owner: null,
+    cooldown: 240,
+    activeTimer: 0,
+    activeLength: 48,
+    init(owner) {
+      this.owner = owner;
+    },
+    tick() {
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        this.owner.isParrying = true;
+        return;
+      }
+
+      this.owner.isParrying = false;
+      this.cooldown -= 1;
+      if (this.cooldown <= 0) {
+        this.activeTimer = this.activeLength;
+        this.cooldown = 240;
+      }
+    },
+    onParry() {
+      this.activeLength += 2;
+    },
+  };
+};
+
+abilityFactories.Stunlock = function StunlockFactory() {
+  return {
+    owner: null,
+    cooldown: 270,
+    activeTimer: 0,
+    activeLength: 56,
+    init(owner) {
+      this.owner = owner;
+    },
+    tick() {
+      if (this.activeTimer > 0) {
+        this.activeTimer -= 1;
+        this.owner.isParrying = true;
+        return;
+      }
+
+      this.owner.isParrying = false;
+      this.cooldown -= 1;
+      if (this.cooldown <= 0) {
+        this.activeTimer = this.activeLength;
+        this.cooldown = 270;
+      }
+    },
+    onParry(source) {
+      this.activeLength += 2;
+      if (!source) {
+        return;
+      }
+      source.stunTimer = Math.max(source.stunTimer ?? 0, this.activeLength);
+      source.disarmTimer = Math.max(source.disarmTimer ?? 0, this.activeLength);
+    },
+  };
+};
+
+abilityFactories.Mother = function MotherFactory() {
+  return {
+    owner: null,
+    timer: 600,
+    children: [],
+    init(owner) {
+      this.owner = owner;
+      this.timer = 600;
+      this.children = [];
+    },
+    tick() {
+      this.timer -= 1;
+      this.children = this.children.filter((child) => fighters.includes(child));
+      if (this.timer <= 0 && this.children.length === 0) {
+        this.children.push(spawnChild(this.owner, -1));
+        this.children.push(spawnChild(this.owner, 1));
+        this.timer = 600;
+      }
+    },
+  };
+};
+
+abilityFactories.Daycare = function DaycareFactory() {
+  return {
+    owner: null,
+    timer: 600,
+    children: [],
+    init(owner) {
+      this.owner = owner;
+      this.timer = 600;
+      this.children = [];
+    },
+    tick() {
+      this.timer -= 1;
+      this.children = this.children.filter((child) => fighters.includes(child));
+      if (this.timer <= 0 && this.children.length === 0) {
+        this.children.push(spawnChild(this.owner, -1));
+        this.children.push(spawnChild(this.owner, 1));
+        this.timer = 600;
+      }
+
+      for (const child of this.children) {
+        if (Math.hypot(child.x - this.owner.x, child.y - this.owner.y) <= child.size + this.owner.size) {
+          child.hp = Math.min(child.maxHp, child.hp + 1);
+          this.owner.hp = Math.min(this.owner.maxHp, this.owner.hp + 1);
+        }
+      }
+    },
+  };
+};
+
+weaponFactories.Mace = function MaceFactory() {
+  return {
+    name: "Mace",
+    hitRadius: 18,
+    angle: 0,
+    rotationSpeed: 0.09,
+    stunLength: 36,
+    onHit(target) {
+      applyDamage(this.owner, target, 1);
+      target.stunTimer = Math.max(target.stunTimer ?? 0, this.stunLength);
+      this.stunLength += 1;
+    },
+  };
+};
+
+weaponFactories.Concussor = function ConcussorFactory() {
+  return {
+    name: "Concussor",
+    hitRadius: 20,
+    angle: 0,
+    rotationSpeed: 0.09,
+    stunLength: 42,
+    onHit(target) {
+      applyDamage(this.owner, target, 1);
+      target.stunTimer = Math.max(target.stunTimer ?? 0, this.stunLength);
+      target.disarmTimer = Math.max(target.disarmTimer ?? 0, Math.floor(this.stunLength / 2));
+      this.stunLength += 1;
+    },
+  };
+};
+
+fireArrow = function fireArrowOverride(owner, weapon) {
+  projectiles.push({
+    type: "arrow",
+    x: owner.x + Math.cos(weapon.angle) * (owner.size + 5),
+    y: owner.y + Math.sin(weapon.angle) * (owner.size + 5),
+    vx: Math.cos(weapon.angle) * 8,
+    vy: Math.sin(weapon.angle) * 8,
+    owner,
+    damage: 1,
+    size: owner.size * 2.4,
+  });
+
+  weapon.cooldown = weapon.fireRate;
+  playSound(sounds.arrow);
+};
+
+function resolveWeaponBallCollisions() {
+  for (const fighter of fighters) {
+    const weapon = fighter.weapon;
+    if (
+      !weapon ||
+      fighter.disarmTimer > 0 ||
+      weapon.name === "Bow" ||
+      weapon.name === "RPG" ||
+      weapon.name === "Demo" ||
+      weapon.name === "Ruler"
+    ) {
+      continue;
+    }
+
+    const point = getWeaponPoint(fighter);
+    const weaponRadius = (weapon.hitRadius ?? 15) + 6;
+
+    for (const other of fighters) {
+      if (other === fighter || other.isPhasing || areFamilySafe(fighter, other)) {
+        continue;
+      }
+
+      const hitDistance = pointToSegmentDistance(
+        other.x,
+        other.y,
+        fighter.x,
+        fighter.y,
+        point.x,
+        point.y,
+      );
+
+      if (hitDistance >= other.size + weaponRadius) {
+        continue;
+      }
+
+      const dx = other.x - point.x;
+      const dy = other.y - point.y;
+      const distance = Math.max(Math.hypot(dx, dy), 0.1);
+      const nx = dx / distance;
+      const ny = dy / distance;
+
+      other.vx += nx * 0.45;
+      other.vy += ny * 0.45;
+      fighter.vx -= nx * 0.2;
+      fighter.vy -= ny * 0.2;
+    }
+  }
+}
+
+const originalResolveWeaponCollisions = resolveWeaponCollisions;
+let clashSoundCooldown = 0;
+
+resolveWeaponCollisions = function wrappedResolveWeaponCollisions() {
+  if (clashSoundCooldown > 0) {
+    clashSoundCooldown -= 1;
+  }
+
+  let hasClash = false;
+  for (let index = 0; index < fighters.length && !hasClash; index += 1) {
+    const fighter = fighters[index];
+    if (!fighter.weapon || fighter.disarmTimer > 0) {
+      continue;
+    }
+
+    const a = getWeaponPoint(fighter);
+    const aRadius = fighter.weapon.hitRadius ?? 15;
+
+    for (let otherIndex = index + 1; otherIndex < fighters.length; otherIndex += 1) {
+      const other = fighters[otherIndex];
+      if (!other.weapon || other.disarmTimer > 0) {
+        continue;
+      }
+
+      const b = getWeaponPoint(other);
+      const bRadius = other.weapon.hitRadius ?? 15;
+      if (Math.hypot(a.x - b.x, a.y - b.y) < aRadius + bRadius) {
+        hasClash = true;
+        break;
+      }
+    }
+  }
+
+  resolveWeaponBallCollisions();
+  originalResolveWeaponCollisions();
+
+  if (hasClash && clashSoundCooldown === 0) {
+    playSound(sounds.clash);
+    clashSoundCooldown = 8;
+  }
+};
+
 
 function startMatch() {
   if (!selections.left || !selections.right || !roster) {
@@ -1143,11 +1857,6 @@ function spawnDuplicate(owner) {
   duplicate.maxSize = owner.maxSize;
   duplicate.shield = owner.shield;
   duplicate.isPhasing = owner.isPhasing;
-  duplicate.isParrying = owner.isParrying;
-  duplicate.stunTimer = owner.stunTimer;
-  duplicate.disarmTimer = owner.disarmTimer;
-  duplicate.needleInterval = owner.needleInterval;
-  duplicate.needleTimer = owner.needleTimer;
   duplicate.pendingHeal = owner.pendingHeal;
 }
 
@@ -1197,9 +1906,6 @@ function resolveHit(a, b) {
 }
 
 function getBodyDamage(attacker, target) {
-  if (attacker.abilityName === "Lasso" && attacker.ability?.hooked === target) {
-    return 2;
-  }
   if (attacker.name === "Heavy" && attacker.y < target.y) {
     return 2;
   }
@@ -1215,19 +1921,6 @@ function isLassoCollisionPair(a, b) {
     b.abilityName === "Lasso" &&
     b.ability?.hooked === a
   );
-}
-
-function applyWeaponKnockback(attacker, target, weaponX, weaponY, force = 4) {
-  const dx = target.x - weaponX;
-  const dy = target.y - weaponY;
-  const distance = Math.max(Math.hypot(dx, dy), 0.1);
-  const nx = dx / distance;
-  const ny = dy / distance;
-
-  attacker.vx -= (nx * force) / attacker.base.Weight;
-  attacker.vy -= (ny * force) / attacker.base.Weight;
-  target.vx += (nx * force) / target.base.Weight;
-  target.vy += (ny * force) / target.base.Weight;
 }
 
 function updateDaggerTracking(fighter) {
@@ -1275,7 +1968,7 @@ function fireArrow(owner, weapon) {
     vy: Math.sin(weapon.angle) * 8,
     owner,
     damage: 1,
-    size: owner.size * 1.35,
+    size: owner.size / 2,
   });
 
   weapon.cooldown = weapon.fireRate;
@@ -1317,7 +2010,7 @@ function fireRocket(owner, weapon, type = "rocket") {
 
 function updateWeapon(fighter) {
   const weapon = fighter.weapon;
-  if (!weapon || fighter.disarmTimer > 0) {
+  if (!weapon) {
     return;
   }
 
@@ -1349,22 +2042,6 @@ function updateWeapon(fighter) {
       }
     }
     return;
-  }
-
-  if (weapon.name === "Ruler") {
-    weapon.angle += weapon.rotationSpeed;
-    weapon.cooldown = Math.max(0, weapon.cooldown - 1);
-    if (weapon.cooldown === 0) {
-      const target = fighters.find((other) => other !== fighter);
-      if (target) {
-        const angle = Math.atan2(target.y - fighter.y, target.x - fighter.x);
-        const distance = fighter.size + target.size + 12;
-        fighter.x = target.x - Math.cos(angle) * distance;
-        fighter.y = target.y - Math.sin(angle) * distance;
-        weapon.angle = angle;
-        weapon.cooldown = weapon.fireRate;
-      }
-    }
   }
 
   if (weapon.name !== "Dagger") {
@@ -1402,7 +2079,6 @@ function updateWeapon(fighter) {
 
     if (hitDistance < other.size + weaponRadius) {
       weapon.hitCooldowns.set(other, now);
-      applyWeaponKnockback(fighter, other, weaponX, weaponY, 4);
       weapon.onHit?.(other);
       fighter.ability?.onHit?.(other);
       other.ability?.onDamaged?.(fighter);
@@ -1415,18 +2091,11 @@ function updateWeapon(fighter) {
 }
 
 function applyShovelEffect(attacker, target) {
-  const reduction = Math.max(target.maxSize / 12, 1);
-  const minSize = target.maxSize / 12;
-  const nextSize = Math.max(minSize, target.size - reduction);
-  const hitMinimum = target.size > minSize && nextSize <= minSize;
-  target.size = nextSize;
-
-  if (hitMinimum) {
-    applyDamage(attacker, target, 12);
-  }
+  const reduction = Math.max(target.maxSize / 5, 1);
+  target.size = Math.max(target.maxSize / 5, target.size - reduction);
 
   if (attacker.base.Weapon === "Split") {
-    const hpLoss = Math.max(target.maxHp / 12, 1);
+    const hpLoss = Math.max(target.maxHp / 5, 1);
     applyDamage(attacker, target, hpLoss);
     spawnHealCube(target.x, target.y, hpLoss);
   }
@@ -1459,10 +2128,7 @@ function updateProjectiles() {
         continue;
       }
 
-      if (
-        Math.hypot(fighter.x - projectile.x, fighter.y - projectile.y) <
-        fighter.size + projectile.size / 2
-      ) {
+      if (Math.hypot(fighter.x - projectile.x, fighter.y - projectile.y) < fighter.size) {
         if (projectile.type === "arrow") {
           projectile.dead = true;
           applyDamage(projectile.owner, fighter, projectile.damage);
@@ -1571,114 +2237,54 @@ function updateHazards() {
   }
 }
 
-function resolveFortressShieldHits() {
-  for (const fighter of fighters) {
-    if (fighter.abilityName !== "Fortress" || !fighter.ability) {
-      continue;
-    }
-
-    const shields = getFortressShieldPoints(fighter);
-    for (const shield of shields) {
-      for (const target of fighters) {
-        if (target === fighter || target.isPhasing) {
-          continue;
-        }
-
-        const now = performance.now();
-        const lastHit = fighter.ability.hitCooldowns.get(target);
-        if (lastHit && now - lastHit < CONFIG.hitCooldownMs) {
-          continue;
-        }
-
-        if (Math.hypot(target.x - shield.x, target.y - shield.y) < target.size + shield.radius) {
-          fighter.ability.hitCooldowns.set(target, now);
-          applyWeaponKnockback(fighter, target, shield.x, shield.y, 4);
-          applyDamage(fighter, target, 1);
-          fighter.ability.onHit?.(target);
-          target.ability?.onDamaged?.(fighter);
-        }
-      }
-    }
-  }
-}
-
 function resolveWeaponCollisions() {
   for (let i = 0; i < fighters.length; i += 1) {
     for (let j = i + 1; j < fighters.length; j += 1) {
       const a = fighters[i];
       const b = fighters[j];
+      if (!a.weapon || !b.weapon) {
+        continue;
+      }
       if (a.isPhasing || b.isPhasing) {
         continue;
       }
 
-      const aZones = [];
-      const bZones = [];
-
-      if (a.weapon) {
-        a.weapon.clashCooldowns ??= new Map();
-        const point = getWeaponPoint(a);
-        aZones.push({ x: point.x, y: point.y, radius: a.weapon.hitRadius ?? 15, source: a.weapon });
-      }
-      if (b.weapon) {
-        b.weapon.clashCooldowns ??= new Map();
-        const point = getWeaponPoint(b);
-        bZones.push({ x: point.x, y: point.y, radius: b.weapon.hitRadius ?? 15, source: b.weapon });
-      }
-
-      for (const shield of getFortressShieldPoints(a)) {
-        aZones.push({ x: shield.x, y: shield.y, radius: shield.radius, source: a.ability });
-      }
-      for (const shield of getFortressShieldPoints(b)) {
-        bZones.push({ x: shield.x, y: shield.y, radius: shield.radius, source: b.ability });
-      }
-
-      if (!aZones.length || !bZones.length) {
+      const aPoint = getWeaponPoint(a);
+      const bPoint = getWeaponPoint(b);
+      const aRadius = a.weapon.hitRadius ?? 15;
+      const bRadius = b.weapon.hitRadius ?? 15;
+      const distance = Math.hypot(aPoint.x - bPoint.x, aPoint.y - bPoint.y);
+      if (distance >= aRadius + bRadius) {
         continue;
       }
 
-      let clashed = false;
-      for (const aZone of aZones) {
-        for (const bZone of bZones) {
-          const distance = Math.hypot(aZone.x - bZone.x, aZone.y - bZone.y);
-          if (distance >= aZone.radius + bZone.radius) {
-            continue;
-          }
+      a.weapon.clashCooldowns ??= new Map();
+      b.weapon.clashCooldowns ??= new Map();
+      const now = performance.now();
+      const aLast = a.weapon.clashCooldowns.get(b);
+      const bLast = b.weapon.clashCooldowns.get(a);
+      if ((aLast && now - aLast < CONFIG.hitCooldownMs) || (bLast && now - bLast < CONFIG.hitCooldownMs)) {
+        continue;
+      }
 
-          const now = performance.now();
-          aZone.source.clashCooldowns ??= new Map();
-          bZone.source.clashCooldowns ??= new Map();
-          const aLast = aZone.source.clashCooldowns.get(b);
-          const bLast = bZone.source.clashCooldowns.get(a);
-          if ((aLast && now - aLast < CONFIG.hitCooldownMs) || (bLast && now - bLast < CONFIG.hitCooldownMs)) {
-            continue;
-          }
+      a.weapon.clashCooldowns.set(b, now);
+      b.weapon.clashCooldowns.set(a, now);
 
-          aZone.source.clashCooldowns.set(b, now);
-          bZone.source.clashCooldowns.set(a, now);
+      const safeDistance = distance || 0.1;
+      const nx = (bPoint.x - aPoint.x) / safeDistance;
+      const ny = (bPoint.y - aPoint.y) / safeDistance;
+      const clashForce = 3;
 
-          const safeDistance = distance || 0.1;
-          const nx = (bZone.x - aZone.x) / safeDistance;
-          const ny = (bZone.y - aZone.y) / safeDistance;
-          const clashForce = 5;
+      a.vx -= (nx * clashForce) / a.base.Weight;
+      a.vy -= (ny * clashForce) / a.base.Weight;
+      b.vx += (nx * clashForce) / b.base.Weight;
+      b.vy += (ny * clashForce) / b.base.Weight;
 
-          a.vx -= (nx * clashForce) / a.base.Weight;
-          a.vy -= (ny * clashForce) / a.base.Weight;
-          b.vx += (nx * clashForce) / b.base.Weight;
-          b.vy += (ny * clashForce) / b.base.Weight;
-
-          if (a.weapon && typeof a.weapon.angle === "number") {
-            a.weapon.angle -= 0.08;
-          }
-          if (b.weapon && typeof b.weapon.angle === "number") {
-            b.weapon.angle += 0.08;
-          }
-
-          clashed = true;
-          break;
-        }
-        if (clashed) {
-          break;
-        }
+      if (typeof a.weapon.angle === "number") {
+        a.weapon.angle -= 0.08;
+      }
+      if (typeof b.weapon.angle === "number") {
+        b.weapon.angle += 0.08;
       }
     }
   }
@@ -1774,38 +2380,25 @@ function drawHazard(hazard) {
 function drawFallbackWeapon(fighter) {
   const point = getWeaponPoint(fighter);
   const weapon = fighter.weapon;
-  const weaponSize = Math.max(12, fighter.size * 0.75);
   ctx.save();
   ctx.translate(point.x, point.y);
   ctx.rotate(weapon.angle);
 
   if (weapon.name === "Staff") {
     ctx.fillStyle = "#8b5a2b";
-    ctx.fillRect(-weaponSize * 0.1, -weaponSize * 0.6, weaponSize * 0.2, weaponSize * 1.2);
+    ctx.fillRect(-3, -18, 6, 36);
     ctx.beginPath();
     ctx.fillStyle = "#38b26d";
-    ctx.arc(0, -weaponSize * 0.66, weaponSize * 0.26, 0, Math.PI * 2);
+    ctx.arc(0, -20, 8, 0, Math.PI * 2);
     ctx.fill();
   } else if (weapon.name === "RPG" || weapon.name === "Demo") {
     ctx.fillStyle = "#3f4a59";
-    ctx.fillRect(-weaponSize * 0.55, -weaponSize * 0.17, weaponSize * 1.1, weaponSize * 0.34);
+    ctx.fillRect(-16, -5, 32, 10);
     ctx.fillStyle = "#d5a021";
-    ctx.fillRect(weaponSize * 0.28, -weaponSize * 0.1, weaponSize * 0.34, weaponSize * 0.2);
-  } else if (weapon.name === "Ruler") {
-    ctx.fillStyle = "#d4c94c";
-    ctx.fillRect(-weaponSize * 0.6, -weaponSize * 0.14, weaponSize * 1.2, weaponSize * 0.28);
-  } else if (weapon.name === "Needle") {
-    ctx.fillStyle = "#d9d9d9";
-    ctx.fillRect(-weaponSize * 0.55, -weaponSize * 0.07, weaponSize * 1.1, weaponSize * 0.14);
-    ctx.beginPath();
-    ctx.moveTo(weaponSize * 0.55, 0);
-    ctx.lineTo(weaponSize * 0.35, -weaponSize * 0.12);
-    ctx.lineTo(weaponSize * 0.35, weaponSize * 0.12);
-    ctx.closePath();
-    ctx.fill();
+    ctx.fillRect(10, -3, 10, 6);
   } else {
     ctx.fillStyle = "#222";
-    ctx.fillRect(-weaponSize * 0.5, -weaponSize * 0.14, weaponSize, weaponSize * 0.28);
+    ctx.fillRect(-14, -4, 28, 8);
   }
 
   ctx.restore();
@@ -1846,28 +2439,12 @@ function drawFighter(fighter) {
   ctx.font = `${fighter.size * 0.8}px Courier New`;
   ctx.fillText(Math.floor(fighter.hp), fighter.x, fighter.y);
 
-  if (fighter.isParrying) {
-    ctx.strokeStyle = "#fff799";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(fighter.x, fighter.y, fighter.size + 8, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
   if (fighter.abilityName === "Fortress") {
-    for (const shield of getFortressShieldPoints(fighter)) {
-      ctx.save();
-      ctx.translate(shield.x, shield.y);
-      ctx.rotate(shield.angle);
-      ctx.fillStyle = "#7d8a97";
-      ctx.strokeStyle = "#d7e0e8";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.rect(-10, -12, 20, 24);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
+    ctx.strokeStyle = "#7d8a97";
+    ctx.lineWidth = 6 + Math.min(fighter.shield, 6);
+    ctx.beginPath();
+    ctx.arc(fighter.x, fighter.y, fighter.size + 8, -0.8, 0.8);
+    ctx.stroke();
   }
 
   if (!fighter.weapon) {
@@ -1878,19 +2455,12 @@ function drawFighter(fighter) {
   const point = getWeaponPoint(fighter);
   const weaponX = point.x;
   const weaponY = point.y;
-  const weaponSize = Math.max(12, fighter.size * 0.75);
 
   ctx.save();
   ctx.translate(weaponX, weaponY);
   ctx.rotate(fighter.weapon.angle);
   if (images[fighter.weapon.name]) {
-    ctx.drawImage(
-      images[fighter.weapon.name],
-      -weaponSize / 2,
-      -weaponSize / 2,
-      weaponSize,
-      weaponSize,
-    );
+    ctx.drawImage(images[fighter.weapon.name], -15, -15, 30, 30);
   } else {
     ctx.restore();
     drawFallbackWeapon(fighter);
@@ -1979,18 +2549,6 @@ function getBattleDetails(fighter) {
     }
     return lines;
   }
-  if (weapon.name === "Ruler") {
-    return [
-      `HP: ${Math.floor(fighter.hp)}`,
-      `TP CD: ${weapon.fireRate}`,
-    ];
-  }
-  if (weapon.name === "Needle") {
-    return [
-      `HP: ${Math.floor(fighter.hp)}`,
-      `TICK: ${fighter.needleInterval ? (fighter.needleInterval / 60).toFixed(1) : "10.0"}S`,
-    ];
-  }
   if (weapon.name === "RPG" || weapon.name === "Demo") {
     const lines = [
       `HP: ${Math.floor(fighter.hp)}`,
@@ -2017,23 +2575,6 @@ function getBattleDetails(fighter) {
       `CD: ${fighter.isPhasing ? Math.ceil(phase.activeTimer / 60) : Math.ceil(phase.cooldown / 60)}`,
     ];
   }
-  if (ability === "Parry" || ability === "Stunlock") {
-    const parry = fighter.ability;
-    return [
-      `HP: ${Math.floor(fighter.hp)}`,
-      `PARRY: ${fighter.isParrying ? "ON" : "OFF"}`,
-      `LEN: ${parry?.activeLength ?? 0}`,
-    ];
-  }
-  if (ability === "Mother" || ability === "Daycare") {
-    const mother = fighter.ability;
-    const childCount = mother?.children?.filter((child) => fighters.includes(child)).length ?? 0;
-    return [
-      `HP: ${Math.floor(fighter.hp)}`,
-      `KIDS: ${childCount}`,
-      `ABL: ${ability}`,
-    ];
-  }
 
   return [`HP: ${Math.floor(fighter.hp)}`];
 }
@@ -2050,26 +2591,10 @@ function renderHud() {
 
 function updateFighters() {
   for (const fighter of fighters) {
-    if (fighter.stunTimer > 0) {
-      fighter.stunTimer -= 1;
-    }
-    if (fighter.disarmTimer > 0) {
-      fighter.disarmTimer -= 1;
-    }
-    if (fighter.needleInterval > 0) {
-      fighter.needleTimer -= 1;
-      if (fighter.needleTimer <= 0) {
-        applyDamage(null, fighter, 1, true);
-        fighter.needleTimer = fighter.needleInterval;
-      }
-    }
-
     fighter.rotation += fighter.spinSpeed;
-    if (fighter.stunTimer <= 0) {
-      fighter.vy += CONFIG.gravity;
-      fighter.x += fighter.vx;
-      fighter.y += fighter.vy;
-    }
+    fighter.vy += CONFIG.gravity;
+    fighter.x += fighter.vx;
+    fighter.y += fighter.vy;
 
     confineToArena(fighter);
     fighter.ability?.tick?.();
@@ -2102,7 +2627,6 @@ function frame() {
 
       updateProjectiles();
       updateHazards();
-      resolveFortressShieldHits();
       resolveWeaponCollisions();
       resolveFighterCollisions();
       pruneDefeated();
