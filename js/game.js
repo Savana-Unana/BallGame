@@ -722,6 +722,10 @@ function applyDamage(source, target, amount, ignoreParry = false) {
     return 0;
   }
 
+  if (areFamilySafe(source, target)) {
+    return 0;
+  }
+
   if (
     !ignoreParry &&
     source &&
@@ -859,6 +863,20 @@ function pointToSegmentDistance(px, py, ax, ay, bx, by) {
   const closestX = ax + abx * t;
   const closestY = ay + aby * t;
   return Math.hypot(px - closestX, py - closestY);
+}
+
+function areFamilySafe(source, target) {
+  if (!source || !target) {
+    return false;
+  }
+
+  if (source === target) {
+    return true;
+  }
+
+  const sourceParent = source.isChild ? source.parent : source;
+  const targetParent = target.isChild ? target.parent : target;
+  return sourceParent && targetParent && sourceParent === targetParent;
 }
 
 function formatValue(value) {
